@@ -256,8 +256,6 @@ contract-clause-extractor/
 
 # Design Decisions & Technical Overview
 
-This document outlines the key design decisions, trade-offs, and technical architecture of the project.
-
 ---
 
 ## 🤖 LLM Provider: OpenAI GPT-4o-mini
