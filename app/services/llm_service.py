@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 from openai import AsyncOpenAI
 from app.config import settings
 
@@ -27,14 +27,19 @@ class LLMService:
         "notices",
     ]
 
-    def __init__(self):
-        if not settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+    def __init__(self, client: Optional[AsyncOpenAI] = None):
+        self._client = client
         self.model = settings.openai_model
         self.max_tokens = settings.openai_max_tokens
         self.temperature = settings.openai_temperature
+
+    def _ensure_client(self) -> AsyncOpenAI:
+        """Create an OpenAI client if one was not injected."""
+        if self._client is None:
+            if not settings.openai_api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is required")
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        return self._client
 
     # ----------------------------------------------------
     # Prompt builder
@@ -97,6 +102,7 @@ Return ONLY the JSON array now.
 
         try:
             from openai import BadRequestError
+            client = self._ensure_client()
             
             # Build base parameters
             api_params = {
@@ -111,18 +117,18 @@ Return ONLY the JSON array now.
             # Try max_completion_tokens first (required for gpt-5-mini and newer models)
             try:
                 api_params["max_completion_tokens"] = self.max_tokens
-                response = await self.client.chat.completions.create(**api_params)
+                response = await client.chat.completions.create(**api_params)
             except TypeError:
                 # SDK doesn't recognize max_completion_tokens, try passing directly
                 try:
                     del api_params["max_completion_tokens"]
-                    response = await self.client.chat.completions.create(
+                    response = await client.chat.completions.create(
                         **api_params,
                         max_completion_tokens=self.max_tokens
                     )
                 except Exception:
                     # Fallback to max_tokens for older models
-                    response = await self.client.chat.completions.create(
+                    response = await client.chat.completions.create(
                         **api_params,
                         max_tokens=self.max_tokens
                     )
@@ -131,7 +137,7 @@ Return ONLY the JSON array now.
                 error_str = str(e).lower()
                 if "use 'max_completion_tokens'" in error_str:
                     del api_params["max_completion_tokens"]
-                    response = await self.client.chat.completions.create(
+                    response = await client.chat.completions.create(
                         **api_params,
                         max_completion_tokens=self.max_tokens
                     )

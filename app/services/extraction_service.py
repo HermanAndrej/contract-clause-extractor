@@ -10,11 +10,16 @@ from app.repositories.extraction_repository import ExtractionRepository
 class ExtractionService:
     """Orchestrates the extraction pipeline."""
     
-    def __init__(self):
+    def __init__(
+        self,
+        document_processor: DocumentProcessor | None = None,
+        llm_service: LLMService | None = None,
+        repository: ExtractionRepository | None = None,
+    ):
         """Initialize extraction service."""
-        self.document_processor = DocumentProcessor()
-        self.llm_service = LLMService()
-        self.repository = ExtractionRepository()
+        self.document_processor = document_processor or DocumentProcessor()
+        self.llm_service = llm_service or LLMService()
+        self.repository = repository or ExtractionRepository()
     
     async def extract_clauses(
         self,

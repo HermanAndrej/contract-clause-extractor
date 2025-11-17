@@ -155,6 +155,8 @@ async def list_extractions(
     """
     try:
         result = extraction_service.list_extractions(page, page_size)
+        document_ids = [doc.id for doc in result["items"]]
+        clause_counts = repository.get_clause_counts(document_ids)
         
         items = [
             ExtractionListItem(
@@ -162,7 +164,7 @@ async def list_extractions(
                 filename=doc.filename,
                 uploaded_at=doc.uploaded_at,
                 processed_at=doc.processed_at,
-                total_clauses=len(repository.get_clauses(doc.id)),
+                total_clauses=clause_counts.get(doc.id, 0),
                 status=doc.status
             )
             for doc in result["items"]

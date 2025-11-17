@@ -3,26 +3,16 @@ import uuid
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, desc
-from sqlalchemy.orm import sessionmaker
-from app.models.database import Document, Clause
-from app.config import settings
+from sqlalchemy import desc, func
+from app.models.database import Document, Clause, get_session_factory
 
 
 class ExtractionRepository:
     """Repository for managing extraction data."""
     
-    def __init__(self):
-        """Initialize database connection."""
-        self.engine = create_engine(
-            settings.database_url,
-            connect_args={"check_same_thread": False}  # SQLite specific
-        )
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-    
     def get_session(self) -> Session:
         """Get database session."""
-        return self.SessionLocal()
+        return get_session_factory()()
     
     def create_document(
         self,
@@ -140,6 +130,23 @@ class ExtractionRepository:
                 .all()
             )
             return documents, total
+        finally:
+            session.close()
+
+    def get_clause_counts(self, document_ids: List[str]) -> dict:
+        """Return clause counts for provided document IDs in a single query."""
+        if not document_ids:
+            return {}
+
+        session = self.get_session()
+        try:
+            results = (
+                session.query(Clause.document_id, func.count(Clause.id))
+                .filter(Clause.document_id.in_(document_ids))
+                .group_by(Clause.document_id)
+                .all()
+            )
+            return {doc_id: count for doc_id, count in results}
         finally:
             session.close()
 

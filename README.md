@@ -1,6 +1,6 @@
 # Contract Clause Extractor
 
-A FastAPI service that extracts and structures key clauses from legal contracts using LLM APIs. Built for Chamelio's take-home assignment.
+A FastAPI service that extracts and structures key clauses from legal contracts using LLM APIs.
 
 ## Overview
 
@@ -102,6 +102,20 @@ This service accepts contract documents (PDF, DOCX) via a REST API and uses Open
    - API: http://localhost:8000
    - Interactive docs: http://localhost:8000/docs
    - Health check: http://localhost:8000/health
+
+### Testing
+
+- Create and activate a virtual environment (recommended to avoid globally installed pytest plugins interfering with the run)
+  ```bash
+  python -m venv .venv
+  source .venv/bin/activate  # or .venv\Scripts\Activate.ps1 on Windows
+  pip install -r requirements.txt
+  ```
+- Run the full suite (unit + API tests):
+  ```bash
+  pytest
+  ```
+- Tests rely on stubbed LLM/doc processors and a temporary SQLite file, so they pass without an OpenAI key.
 
 ### Docker Setup
 
@@ -256,7 +270,7 @@ This document outlines the key design decisions, trade-offs, and technical archi
     * ✅ Supports `max_completion_tokens` for output control.
     * ❌ Slightly less accurate than GPT-4o for complex legal reasoning.
     * ❌ Shorter context window compared to other models like Claude.
-* **Trade-off:** Prioritized **speed and cost** over maximum reasoning complexity. GPT-4o-mini delivers high-quality clause identification while remaining efficient and affordable.
+* **Trade-off:** Prioritized **speed and cost** over maximum reasoning complexity. GPT-4o-mini delivers high-quality clause identification while remaining efficient and affordable. The LLM client is lazily instantiated, so swapping to another provider (e.g., Claude or a hosted fine-tuned model) is a single configuration change plus prompt adjustments.
 
 ---
 
@@ -267,8 +281,9 @@ This document outlines the key design decisions, trade-offs, and technical archi
     * ✅ Zero setup; lightweight and portable.
     * ✅ Easy to inspect and debug.
     * ✅ Fully sufficient for the demo/assignment scope.
+    * ✅ Shared SQLAlchemy engine/session factory to avoid per-request engine churn.
     * ❌ Limited concurrency for high-volume production.
-* **Trade-off:** Chose **simplicity and maintainability** over scalability. It's perfect for prototyping and can be easily upgraded later.
+* **Trade-off:** Chose **simplicity and maintainability** over scalability. It's perfect for prototyping and can be easily upgraded later by pointing the shared engine helpers at PostgreSQL/Aurora.
 
 ---
 
@@ -334,7 +349,7 @@ This document outlines the key design decisions, trade-offs, and technical archi
     * Provided a list of common clause types to look for.
     * Specified the exact output fields and JSON format (`clause_type`, `content`).
     * Explicit final instruction: "Return ONLY a valid JSON array."
-* **Result:** This multi-step, role-based prompt produces high-quality, structured, and consistent JSON output. Chunked documents are processed sequentially to maintain the correct order of clauses.
+* **Result:** This multi-step, role-based prompt produces high-quality, structured, and consistent JSON output. Chunked documents are processed sequentially to maintain the correct order of clauses, and the parser includes guardrails to recover from Markdown wrappers or malformed JSON.
 
 ---
 
@@ -346,7 +361,7 @@ This document outlines the key design decisions, trade-offs, and technical archi
 * **Prompt Engineering:** Iterated multiple times to develop a robust prompt that forces reliable JSON output from the LLM.
 * **Error Handling:** Designed fallback parsing logic and structured error responses for the API.
 * **Code Generation:** Assisted with FastAPI boilerplate, Pydantic data schemas, and SQLAlchemy database models.
-* **Testing Strategy:** Helped define a test coverage plan, including edge cases (e.g., empty files, non-PDFs) and API workflows.
+* **Testing Strategy:** Helped define a test coverage plan, including edge cases (e.g., empty files, non-PDFs) and API workflows. The current suite covers API smoke tests plus an end-to-end happy path using stubbed services.
 
 ---
 
@@ -356,27 +371,33 @@ This document outlines the key design decisions, trade-offs, and technical archi
 * **Document Structure:** Performs best on documents with well-structured clauses (e.g., clear headings or distinct paragraphs).
 * **Language:** Designed and tested for **English-language** documents.
 * **File Size:** Configured for a maximum file size of **10MB**.
-* **Chunking:** Handles ~8K characters per chunk (to fit GPT-4o-mini's context). Very large documents may require more advanced chunking logic.
+* **Chunking:** Handles ~8K characters per chunk (to fit GPT-4o-mini's context). Very large documents may require more advanced chunking logic or background processing.
 
 ---
 
 ## 🚀 Improvements with More Time
 
-* **Testing:** Implement full unit and integration test suites, mocking LLM responses to test logic independently.
+* **Testing:** Expand integration tests with live PDF fixtures and async test plugins; add load tests against the shared engine helpers.
+
 * **Error Handling:** Add more granular error types, retry logic for failed API calls, and enhanced validation.
+
 * **Performance:**
-    * Implement **parallel processing** for document chunks.
+    * Implement **parallel processing** for document chunks or move extraction jobs to a queue.
     * Introduce caching (e.g., Redis) for LLM requests.
     * Move LLM processing to a background job (e.g., Celery) to make the API non-blocking.
+    * Persist clause counts on the document to avoid aggregation queries when listing.
+
 * **Features:**
     * Add **OCR support** (e.g., `pytesseract`) for scanned PDFs.
     * Implement clause **confidence scoring** from the LLM.
     * Add export formats (e.g., CSV, XLSX).
     * Build a search functionality for extracted clauses.
+
 * **Production Readiness:**
     * Add authentication (e.g., OAuth2) and rate limiting.
-    * Integrate structured monitoring and logging (e.g., Sentry, Grafana).
-    * Implement database migrations (e.g., Alembic).
+    * Integrate structured monitoring and logging (e.g., Sentry, Grafana) plus better tracing of LLM calls.
+    * Implement database migrations (e.g., Alembic) and multi-environment config for swapping SQLite -> PostgreSQL.
+
 * **LLM Enhancements:**
     * Experiment with a fine-tuned legal model.
     * Implement smarter chunking (e.g., semantic chunking) to avoid cutting clauses in half.

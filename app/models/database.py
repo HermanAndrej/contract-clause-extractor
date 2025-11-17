@@ -1,12 +1,49 @@
-"""SQLAlchemy database models."""
+"""SQLAlchemy database models and helpers."""
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index, create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, sessionmaker
+from app.config import settings
 
 Base = declarative_base()
+
+_engine = None
+_SessionLocal = None
+
+
+def _create_engine(database_url: Optional[str] = None):
+    url = database_url or settings.database_url
+    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    return create_engine(url, connect_args=connect_args)
+
+
+def get_engine():
+    """Return a shared SQLAlchemy engine."""
+    global _engine
+    if _engine is None:
+        _engine = _create_engine()
+    return _engine
+
+
+def get_session_factory():
+    """Return a shared session factory."""
+    global _SessionLocal
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+    return _SessionLocal
+
+
+def reset_engine(database_url: Optional[str] = None):
+    """Dispose the current engine and optionally point to a new URL (used in tests)."""
+    global _engine, _SessionLocal
+    if database_url is not None:
+        settings.database_url = database_url
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _SessionLocal = None
 
 
 class Document(Base):
@@ -60,10 +97,7 @@ class Clause(Base):
 
 def init_db():
     """Initialize database tables."""
-    from app.config import settings
-    from sqlalchemy import create_engine
-    
-    engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+    engine = get_engine()
     Base.metadata.create_all(bind=engine)
     return engine
 
